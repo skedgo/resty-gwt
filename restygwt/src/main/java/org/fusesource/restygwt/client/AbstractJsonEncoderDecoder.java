@@ -689,7 +689,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(Collection<Type> value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
