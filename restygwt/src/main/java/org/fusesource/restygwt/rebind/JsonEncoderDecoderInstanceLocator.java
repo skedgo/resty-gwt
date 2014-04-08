@@ -24,6 +24,7 @@ import static org.fusesource.restygwt.rebind.BaseSourceCreator.INFO;
 import static org.fusesource.restygwt.rebind.BaseSourceCreator.TRACE;
 import static org.fusesource.restygwt.rebind.BaseSourceCreator.WARN;
 
+import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Date;
@@ -32,7 +33,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.google.gwt.core.ext.BadPropertyValueException;
 import org.fusesource.restygwt.client.AbstractJsonEncoderDecoder;
+import org.fusesource.restygwt.client.AbstractNestedJsonEncoderDecoder;
 import org.fusesource.restygwt.client.Json;
 import org.fusesource.restygwt.client.Json.Style;
 import org.fusesource.restygwt.client.ObjectEncoderDecoder;
@@ -54,7 +57,9 @@ import com.google.gwt.xml.client.Document;
 public class JsonEncoderDecoderInstanceLocator {
 
     public static final String JSON_ENCODER_DECODER_CLASS = AbstractJsonEncoderDecoder.class.getName();
+    public static final String JSON_NESTED_ENCODER_DECODER_CLASS = AbstractNestedJsonEncoderDecoder.class.getName();
     public static final String JSON_CLASS = Json.class.getName();
+    public static final String CUSTOM_SERIALIZER_GENERATORS = "org.fusesource.restygwt.restyjsonserializergenerator";
 
     public final JClassType STRING_TYPE;
     public final JClassType JSON_VALUE_TYPE;
@@ -64,6 +69,7 @@ public class JsonEncoderDecoderInstanceLocator {
     public final JClassType LIST_TYPE;
 
     public final HashMap<JType, String> builtInEncoderDecoders = new HashMap<JType, String>();
+    public final JsonSerializerGenerators customGenerators = new JsonSerializerGenerators();
 
     public final GeneratorContext context;
     public final TreeLogger logger;
@@ -107,6 +113,25 @@ public class JsonEncoderDecoderInstanceLocator {
         
         builtInEncoderDecoders.put(find(Object.class), ObjectEncoderDecoder.class.getName() + ".INSTANCE");
 
+        fillInCustomGenerators(context, logger);
+
+    }
+
+    @SuppressWarnings("unchecked")
+    private void fillInCustomGenerators(GeneratorContext context, TreeLogger logger) {
+        try {
+            List<String> classNames = context.getPropertyOracle().getConfigurationProperty(CUSTOM_SERIALIZER_GENERATORS).getValues();
+            for (String name: classNames) {
+                try {
+                    Class<? extends RestyJsonSerializerGenerator> clazz = (Class<? extends RestyJsonSerializerGenerator>) Class.forName(name);
+                    Constructor<? extends RestyJsonSerializerGenerator> constructor = clazz.getDeclaredConstructor();
+                    RestyJsonSerializerGenerator generator = constructor.newInstance();
+                    customGenerators.addGenerator(generator, context.getTypeOracle());
+                } catch (Exception e) {
+                    logger.log(WARN, "Could not access class: " + name, e);
+                }
+            }
+        } catch (BadPropertyValueException ignore) {}
     }
 
     private JClassType find(Class<?> type) throws UnableToCompleteException {
@@ -120,13 +145,33 @@ public class JsonEncoderDecoderInstanceLocator {
     private String getEncoderDecoder(JType type, TreeLogger logger) throws UnableToCompleteException {
         String rc = builtInEncoderDecoders.get(type);
         if (rc == null) {
-            JClassType ct = type.isClass();
+            JClassType ct = type.isClass() == null? type.isInterface() : type.isClass();
             if (ct != null && !isCollectionType(ct)) {
                 JsonEncoderDecoderClassCreator generator = new JsonEncoderDecoderClassCreator(logger, context, ct);
                 return generator.create() + ".INSTANCE";
             }
         }
         return rc;
+    }
+
+    private String getCustomEncoderDecoder(JType type) throws UnableToCompleteException {
+        RestyJsonSerializerGenerator restyGenerator = customGenerators.findGenerator(type);
+        if (restyGenerator == null) {
+            return null;
+        }
+        Class<? extends JsonEncoderDecoderClassCreator> clazz = restyGenerator.getGeneratorClass();
+        try {
+            Constructor<? extends JsonEncoderDecoderClassCreator> constructor = clazz.getDeclaredConstructor(TreeLogger.class, GeneratorContext.class, JClassType.class);
+            JsonEncoderDecoderClassCreator generator = constructor.newInstance(logger, context, type);
+            return generator.create() + ".INSTANCE";
+        } catch (Exception e) {
+            logger.log(WARN, "Could not access class: " + clazz, e);
+            return null;
+        }
+    }
+
+    public boolean hasCustomEncoderDecoder(JType type) throws UnableToCompleteException {
+        return getCustomEncoderDecoder(type) != null;
     }
 
     public String encodeExpression(JType type, String expression, Style style) throws UnableToCompleteException {
@@ -141,6 +186,11 @@ public class JsonEncoderDecoderInstanceLocator {
 
     private String encodeDecodeExpression(JType type, String expression, Style style, String encoderMethod, String mapMethod, String setMethod, String listMethod, String arrayMethod)
             throws UnableToCompleteException {
+
+        String customEncoderDecoder = getCustomEncoderDecoder(type);
+        if (customEncoderDecoder != null) {
+            return customEncoderDecoder + "." + encoderMethod + "(" + expression + ")";
+        }
 
         if (null != type.isEnum()) {
             if (encoderMethod.equals("encode")) {
@@ -158,66 +208,40 @@ public class JsonEncoderDecoderInstanceLocator {
         JClassType clazz = type.isClassOrInterface();
 
         if (isCollectionType(clazz)) {
-            JParameterizedType parameterizedType = type.isParameterized();
-            if (parameterizedType == null || parameterizedType.getTypeArgs() == null) {
-                error("Collection types must be parameterized.");
-            }
-            JClassType[] types = parameterizedType.getTypeArgs();
+            JClassType[] types = getTypes(type);
 
-            if (clazz.isAssignableTo(MAP_TYPE)) {
-                if (types.length != 2) {
-                    error("Map must define two and only two type parameters");
-                }
-                if (isCollectionType(types[0])) {
-                    error("Map key can't be a collection");
-                }
-                if (!builtInEncoderDecoders.containsKey(types[0])) {
-                    error("Map key can't be an object");
-                }
-                String keyEncoderDecoder = getEncoderDecoder(types[0], logger);
-                encoderDecoder = getEncoderDecoder(types[1], logger);
+            String[] coders = isMapEncoderDecoder( clazz, types, style );
+            if ( coders != null ){
+                String keyEncoderDecoder = coders[ 1 ];
+                encoderDecoder = coders[ 0 ];
                 if (encoderDecoder != null && keyEncoderDecoder != null) {
                     return mapMethod + "(" + expression + ", " + keyEncoderDecoder + ", " + encoderDecoder + ", "
                             + JSON_CLASS + ".Style." + style.name() + ")";
-                } else if (encoderDecoder != null) {
+                } 
+                else if (encoderDecoder != null) {
                     return mapMethod + "(" + expression + ", " + encoderDecoder + ", " + JSON_CLASS + ".Style."
                             + style.name() + ")";
                 }
-            } else if (clazz.isAssignableTo(SET_TYPE)) {
-                if (types.length != 1) {
-                    error("Set must define one and only one type parameter");
-                }
-                encoderDecoder = getEncoderDecoder(types[0], logger);
-                if (encoderDecoder != null) {
-                    return setMethod + "(" + expression + ", " + encoderDecoder + ")";
-                }
-            } else if (clazz.isAssignableTo(LIST_TYPE)) {
-                if (types.length != 1) {
-                    error("List must define one and only one type parameter");
-                }
-                encoderDecoder = getEncoderDecoder(types[0], logger);
-                debug("type encoder for: " + types[0] + " is " + encoderDecoder);
-                if (encoderDecoder != null) {
-                    return listMethod + "(" + expression + ", " + encoderDecoder + ")";
-                }
             }
-        } else if (type.isArray() != null) {
-            JType componentType = type.isArray().getComponentType();
-            
-            if (componentType.isArray() != null) {
-                error("Multi-dimensional arrays are not yet supported");
-            }
-            
-            encoderDecoder = getEncoderDecoder(componentType, logger);
-            debug("type encoder for: " + componentType + " is " + encoderDecoder);
+            encoderDecoder = isSetEncoderDecoder(clazz, types, style);
             if (encoderDecoder != null) {
-                if (encoderMethod.equals("encode")) {
-                    return arrayMethod + "(" + expression + ", " + encoderDecoder + ")";
-                } else {
-                    return arrayMethod + "(" + expression + ", " + encoderDecoder
-                            + ", new " + componentType.getQualifiedSourceName()
-                            + "[" + JSON_ENCODER_DECODER_CLASS + ".getSize(" + expression + ")])";
-                }
+                return setMethod + "(" + expression + ", " + encoderDecoder + ")";
+            }
+            
+            encoderDecoder = isListEncoderDecoder(clazz, types, style);
+            if (encoderDecoder != null) {
+                return listMethod + "(" + expression + ", " + encoderDecoder + ")";
+            }
+        }
+        
+        encoderDecoder = isArrayEncoderDecoder(type, style);
+        if (encoderDecoder != null) {  
+            if (encoderMethod.equals("encode")) {
+                return arrayMethod + "(" + expression + ", " + encoderDecoder + ")";
+            } else {
+                return arrayMethod + "(" + expression + ", " + encoderDecoder
+                        + ", new " + type.isArray().getComponentType().getQualifiedSourceName()
+                        + "[" + JSON_ENCODER_DECODER_CLASS + ".getSize(" + expression + ")])";
             }
         }
 
@@ -225,6 +249,116 @@ public class JsonEncoderDecoderInstanceLocator {
         return null;
     }
 
+    protected String[] isMapEncoderDecoder(JClassType clazz, JClassType[] types,
+            Style style) throws UnableToCompleteException {
+        String encoderDecoder;
+        if (clazz.isAssignableTo(MAP_TYPE)) {
+            if (types.length != 2) {
+                error("Map must define two and only two type parameters");
+            }
+            if (isCollectionType(types[0])) {
+                error("Map key can't be a collection");
+            }
+
+            String keyEncoderDecoder = getNestedEncoderDecoder(types[0], style);
+            encoderDecoder = getNestedEncoderDecoder(types[1], style);
+            return new String[]{ encoderDecoder, keyEncoderDecoder };
+        }
+        return null;
+    }
+
+    String getNestedEncoderDecoder( JType type, Style style ) throws UnableToCompleteException{
+        String result = getEncoderDecoder(type, logger);
+        if ( result != null ){
+            return result;
+        }
+        
+        JClassType clazz = type.isClassOrInterface();
+        if (isCollectionType(clazz)) {  
+            JClassType[] types = getTypes(type);
+
+            String[] coders = isMapEncoderDecoder( clazz, types, style );
+            if ( coders != null ){
+                String keyEncoderDecoder = coders[ 1 ];
+                result = coders[ 0 ];
+                if (result != null && keyEncoderDecoder != null) {
+                    return JSON_NESTED_ENCODER_DECODER_CLASS + ".mapEncoderDecoder( " + keyEncoderDecoder +
+                            ", " + result + ", " +  JSON_CLASS + ".Style." + style.name() + " )";
+                } 
+                else if (result != null) {
+                    return JSON_NESTED_ENCODER_DECODER_CLASS + ".mapEncoderDecoder( " + result + 
+                            ", " + JSON_CLASS + ".Style." + style.name() + " )";
+                }
+            }
+            result = isListEncoderDecoder( clazz, types, style );
+            if( result != null ){
+                return JSON_NESTED_ENCODER_DECODER_CLASS + ".listEncoderDecoder( " + result + " )"; 
+            }
+            result = isSetEncoderDecoder( clazz, types, style );
+            if( result != null ){
+                return JSON_NESTED_ENCODER_DECODER_CLASS + ".setEncoderDecoder( " + result + " )"; 
+            }
+        }
+        else {
+            result = isArrayEncoderDecoder(type, style);
+            if( result != null ){
+                return JSON_NESTED_ENCODER_DECODER_CLASS + ".arrayEncoderDecoder( " + result + " )"; 
+            }
+        }
+        return null;
+    }
+
+    protected String isArrayEncoderDecoder( JType type, Style style )
+            throws UnableToCompleteException {
+        if (type.isArray() != null){ 
+            JType componentType = type.isArray().getComponentType();
+    
+            if (componentType.isArray() != null) {
+                error("Multi-dimensional arrays are not yet supported");
+            }
+        
+            String encoderDecoder = getNestedEncoderDecoder( componentType, style );
+            debug("type encoder for: " + componentType + " is " + encoderDecoder);
+            return encoderDecoder;
+        }
+        return null;
+    }
+    
+    protected String isSetEncoderDecoder( JClassType clazz, JClassType[] types, Style style )
+            throws UnableToCompleteException {
+        if (clazz.isAssignableTo(SET_TYPE)) {
+            if (types.length != 1) {
+                error("Set must define one and only one type parameter");
+            }
+            String encoderDecoder = getNestedEncoderDecoder( types[0], style );
+            debug("type encoder for: " + types[0] + " is " + encoderDecoder);
+            return encoderDecoder;
+        }
+        return null;
+    }
+
+    protected String isListEncoderDecoder( JClassType clazz,
+                                           JClassType[] types,
+                                           Style style) throws UnableToCompleteException {
+        if (clazz.isAssignableTo(LIST_TYPE)) {
+            if (types.length != 1) {
+                error("List must define one and only one type parameter");
+            }
+            String encoderDecoder = getNestedEncoderDecoder( types[0], style );
+            debug("type encoder for: " + types[0] + " is " + encoderDecoder);
+            return encoderDecoder;
+        }
+        return null;
+    }
+
+    protected JClassType[] getTypes(JType type) throws UnableToCompleteException {
+        JParameterizedType parameterizedType = type.isParameterized();
+        if (parameterizedType == null || parameterizedType.getTypeArgs() == null) {
+            error("Collection types must be parameterized.");
+        }
+        JClassType[] types = parameterizedType.getTypeArgs();
+        return types;
+    }
     boolean isCollectionType(JClassType clazz) {
         return clazz != null
                 && (clazz.isAssignableTo(SET_TYPE) || clazz.isAssignableTo(LIST_TYPE) || clazz.isAssignableTo(MAP_TYPE));

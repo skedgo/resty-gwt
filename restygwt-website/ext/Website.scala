@@ -27,18 +27,19 @@ package
 object Website {
 
   val project_name= "RestyGWT"
-  val project_slogan= "Making Restful Services Accessible to GWT Applicaions"
+  val project_slogan= "Making Restful Services Accessible to GWT Applications"
   val project_id= "restygwt"
   val project_jira_key= "RESTYGWT"
   val project_issue_url= "http://github.com/chirino/resty-gwt/issues"
   val project_forums_url= "http://groups.google.com/group/restygwt"
   val project_wiki_url= "http://github.com/chirino/resty-gwt/"
   val project_logo= "/images/restygwt-logo.png"
-  val project_version= "1.3"
-  val project_snapshot_version= "1.4-SNAPSHOT"
+  val project_version= "1.4"
+  val project_snapshot_version= "1.5-SNAPSHOT"
 
   val project_versions = List(
         project_version,
+        "1.3",
         "1.2",
         "1.1",
         "1.0")  

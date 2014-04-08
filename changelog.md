@@ -1,5 +1,74 @@
 # ![RestyGWT](http://restygwt.fusesource.org/images/restygwt-logo.png)
 
+## [resty-gwt 1.4](http://restygwt.fusesource.org/blog/release-1-4.html), 2013-12-17
+
+* Support enum subtypes by serializing enums implementing an interface with a complex object containing the class name and the value. Issue #164 + Make sure we look up
+* Added a test exposing a bug in the generated serializers for enums implementing interfaces with @JsonSubTypes. Issue #164
+* Added test and solution for jsonsubtypes with interfaces, does not work with enums yet. Issue #164
+* Added support for decoding long strings as proper long values in restygwt, added a testcase verifying the behaviour. Long numbers (not strings) will remain an issue 
+* Fixed: Cannot compile generated JsonEncoderDecoder with certain type hierarchy
+* Fixed regression where field type is more specific than constructor argument, issue #162.
+* getField can throw assertion error if you ask for super types, use the field matched instead for fields from super types
+* Set needNullHandling to false only in case of custom generator and true otherwise
+* Added Custom Serializer Generators
+* RestyGWT now supports normal inheritance, subtypes can be listed recursively.
+* cherry picked commit 569b812 of PR #149 and adjusted mock-testcase
+* fix #156
+* fix naming for inner classes #158
+* get more test working or clearly comment out tests in suite
+* use rails3-maven-plugin which works with maven-3.1.x as well
+* allow Attribute annotation expression to return null value
+* getters and setters do not need a matching field. @JsonIgnore works on fields or the setter or the getter
+* encode/decode nested arrays, lists, sets and maps as fields or property of a pojo
+* move all GWT.lo to java.util.logging.Logger
+* send enum null values as null when defined as pojo field #154
+* adjusted contribution part and issue tracker to be in line with how we are doing it
+* make the URLencode working with null values as well
+* reduce noise during test run
+* white spaces
+* url encode PathParam -  issue #147
+* Fix typos, improve consistency
+* some white space changes
+* Refactor the getPossibleType method in JsonEncoderDecoderClassCreator. I created a kind of JsonTypeInfo.Id visitor that can be reused for other matters. I extracted the code from the JsonEncoderDecoderClassCreator to put it in the visitor.
+* Split the HUGE generate method into different methods.
+* Fix Eclipse web.xml validation
+* Support default value for @JsonTypeInfo property
+* Revert "Default @JsonTypeInfo Id.CLASS property value"
+* Revert "Add support for JsonDeserialize for interfaces"
+* Add support for JsonDeserialize for interfaces
+* Default @JsonTypeInfo Id.CLASS property value
+* fixed mapping for @JsonTypeInfo - MINIMAL_CLASS (. as prefix); added support for discovering all subtypes of generic type during the generation process, thus no need to use the @JsonSubTypes annotation in combination with @JsonTypeInfo - CLASS or MINIMAL_CLASS
+* added a note on hwo to parse jsonString and about JsonProperty to customize names
+* added test case for decoding/encoding nested Maps
+* tests for methods returning Request or JsonpRequest
+* let RestService interface methods return either JsonpRequest or Request
+* Fixed 204 not handled roperly for MSIE 8 and 9
+* allow getters and setters corresponding field
+* added generic list encoder - start to nest collection
+* Reduced loglevel for type encoder information to debug
+* Fixed a bug in serializing lists and arrays using @FormParams.
+* some jsonp test
+* make the resource creation lazy inside restService impl - #114
+* Support FormParams. Fixes issue #92.
+* fix encoding of BigDecimal keys of maps (#111)
+* fixed issue with short decoding, cast requred (#106)
+* parse strings of generic map keys correctly
+* let jsonp handle list of POJOs correctly
+* let rest-service use default dispatcher from Defaults when none is set on interface
+* Take dispatcher from Defaults if local one for the Method is not set.
+* get the generated ode compile
+* added missing annotation
+* discriminate Lists on JSONP results
+* Revert "discriminate JSONArray on JSONP results"
+* discriminate JSONArray on JSONP results
+* fixed #108 - allow to ignore any fields in the classhierachy
+* fixed map decode with complex and number keys
+* Documented DirectRestService usage in the user documentation.
+* added test for QueryParam
+* add test case for @PathParams
+* remove yellow flag from eclipse
+* fix regression issue #102 : but expression insde brackets to allow further arithemitek to keep expression as is.
+
 ## [resty-gwt 1.3](http://restygwt.fusesource.org/blog/release-1-3.html), 2012-08-23
 
 * Added additional tests to ensure ObjectEncoderDecoder is not left out again
