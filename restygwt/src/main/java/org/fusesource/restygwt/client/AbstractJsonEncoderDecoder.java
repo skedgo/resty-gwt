@@ -652,7 +652,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
             AbstractJsonEncoderDecoder<KeyType> keyEncoder, AbstractJsonEncoderDecoder<ValueType> valueEncoder,
             Style style) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
 
         switch (style) {
@@ -699,7 +699,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(Map<String, Type> value, AbstractJsonEncoderDecoder<Type> encoder, Style style) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
 
         switch (style) {
@@ -731,7 +731,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(Collection<Type> value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -743,7 +743,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(Type[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -755,7 +755,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(short[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -767,7 +767,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(int[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -779,7 +779,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(long[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -791,7 +791,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(float[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -803,7 +803,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
     
     static public <Type> JSONValue toJSON(double[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -815,7 +815,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(boolean[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -827,7 +827,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(char[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
@@ -839,7 +839,7 @@ abstract public class AbstractJsonEncoderDecoder<T> implements JsonEncoderDecode
 
     static public <Type> JSONValue toJSON(byte[] value, AbstractJsonEncoderDecoder<Type> encoder) {
         if (value == null) {
-            return JSONNull.getInstance();
+            return getNullType();
         }
         JSONArray rc = new JSONArray();
         int i = 0;
