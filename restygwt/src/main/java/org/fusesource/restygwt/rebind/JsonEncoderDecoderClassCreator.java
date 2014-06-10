@@ -457,7 +457,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
                         p("" + possibleType.clazz.getParameterizedQualifiedSourceName() + " rc = new " + possibleType.clazz.getParameterizedQualifiedSourceName() + "(");
                         i(1).p("// The arguments are placed in the order they appear within the annotated constructor").i(-1);
                         orderedFields = getOrderedFields(getFields(possibleType.clazz), creator);
-                        final JField lastField = orderedFields.get(orderedFields.size() - 1);
+                        final JField lastField = !orderedFields.isEmpty() ? orderedFields.get(orderedFields.size() - 1) : null;
                         for (final JField field : orderedFields) {
                             branch("Processing field: " + field.getName(), new Branch<Void>() {
                                 public Void execute() throws UnableToCompleteException {
