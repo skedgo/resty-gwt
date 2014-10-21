@@ -51,6 +51,7 @@ import com.google.gwt.json.client.JSONObject;
 import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
 import com.google.gwt.junit.client.GWTTestCase;
+import org.fusesource.restygwt.client.basic.Optional;
 
 public class EncoderDecoderTestGwt extends GWTTestCase {
 
@@ -1016,8 +1017,8 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         JSONValue json = codec.encode( pojo );
         assertEquals("{\"first\":\"BEGIN\", \"last\":\"END\"}", json.toString());
         WithEnum roundTrip = codec.decode( json );
-        assertEquals( roundTrip.first, Cycle.BEGIN );
-        assertEquals( roundTrip.getLast(), Cycle.END );
+        assertEquals( roundTrip.first, WithEnum.Cycle.BEGIN );
+        assertEquals( roundTrip.getLast(), WithEnum.Cycle.END );
         
         pojo.first = null;
         pojo.setLast(null);
