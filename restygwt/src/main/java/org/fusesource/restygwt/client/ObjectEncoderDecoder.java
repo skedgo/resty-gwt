@@ -54,7 +54,7 @@ public class ObjectEncoderDecoder extends AbstractJsonEncoderDecoder<Object> {
 		object.put(entry.getKey().toString(), encode(entry.getValue()));
 	    return object;
 	} else if(value == null)
-	    return JSONNull.getInstance();
+	    return (Defaults.doesIgnoreJsonNulls()) ? null : JSONNull.getInstance();
 	else
 	    return new JSONString(value.toString());
     }
