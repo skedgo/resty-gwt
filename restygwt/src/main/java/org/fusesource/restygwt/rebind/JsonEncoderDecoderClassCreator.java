@@ -37,6 +37,7 @@ import org.codehaus.jackson.annotate.JsonSubTypes;
 import org.codehaus.jackson.annotate.JsonSubTypes.Type;
 import org.codehaus.jackson.annotate.JsonTypeInfo;
 import org.codehaus.jackson.annotate.JsonTypeInfo.As;
+import org.codehaus.jackson.annotate.JsonValue;
 import org.fusesource.restygwt.client.Json;
 import org.fusesource.restygwt.client.Json.Style;
 
@@ -84,7 +85,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
 
     protected JsonEncoderDecoderInstanceLocator locator;
 
-    public JsonEncoderDecoderClassCreator(TreeLogger logger, GeneratorContext context, JClassType source) throws UnableToCompleteException {
+    public JsonEncoderDecoderClassCreator(TreeLogger logger, GeneratorContext context, JClassType source) {
         super(logger, context, source, JSON_ENCODER_SUFFIX);
     }
 
@@ -139,25 +140,23 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
     {
         if (typeInfo == null)
             return Lists.newArrayList(new Subtype(null, source));
-        else {
-            Collection<Type> subTypes = findJsonSubTypes(source);
-            if(subTypes.isEmpty()) {
-                JsonSubTypes foundAnnotation = findAnnotation(source, JsonSubTypes.class);
-                if(foundAnnotation != null) {
-                    Type[] value = foundAnnotation.value();
-                    subTypes = Arrays.asList(value);
-                }
+        Collection<Type> subTypes = findJsonSubTypes(source);
+        if(subTypes.isEmpty()) {
+            JsonSubTypes foundAnnotation = findAnnotation(source, JsonSubTypes.class);
+            if(foundAnnotation != null) {
+                Type[] value = foundAnnotation.value();
+                subTypes = Arrays.asList(value);
             }
-            PossibleTypesVisitor v = new PossibleTypesVisitor(context, source, isLeaf, getLogger(), subTypes);
-            return v.visit(typeInfo.use());
         }
+        PossibleTypesVisitor v = new PossibleTypesVisitor(context, source, isLeaf, getLogger(), subTypes);
+        return v.visit(typeInfo.use());
     }
 
     private Collection<Type> findJsonSubTypes(JClassType clazz) {
         if (clazz == null)
             return Collections.emptyList();
         else if (clazz.isAnnotationPresent(JsonSubTypes.class)) {
-            JsonSubTypes annotation = (JsonSubTypes) clazz.getAnnotation(JsonSubTypes.class);
+            JsonSubTypes annotation = clazz.getAnnotation(JsonSubTypes.class);
             Set<Type> result = new HashSet<JsonSubTypes.Type>();
             Type[] value = annotation.value();
             for (Type type : value) {
@@ -282,6 +281,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
                         }
 
                         branch("Processing field: " + field.getName(), new Branch<Void>() {
+                            @Override
                             public Void execute() throws UnableToCompleteException {
                                 // TODO: try to get the field with a setter or
                                 // JSNI
@@ -370,8 +370,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
         p(JSON_VALUE_CLASS + " className=org.fusesource.restygwt.client.AbstractJsonEncoderDecoder.STRING.encode(\""
                 + possibleType.tag + "\");");
         p("rrc.put(" + wrap(getTypeInfoPropertyValue(typeInfo)) + ", className);");
-        p("rrc.put(\"name\", new " + JSON_STRING_CLASS + "(value.name()));");
-
+        p("rrc.put(\"name\", new " + JSON_STRING_CLASS + "(value." + getValueMethod(possibleType.clazz) + "()));");
         p("return rrc;");
     }
 
@@ -380,15 +379,26 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
         p();
         p("public " + jsonValueClass + " encode(" + classType.getParameterizedQualifiedSourceName() + " value) {").i(1);
         {
-        p("if( value==null ) {").i(1);
-        {
-            p("return " + JSON_NULL_CLASS + ".getInstance();").i(-1);
+            p("if( value==null ) {").i(1);
+            {
+                p("return " + JSON_NULL_CLASS + ".getInstance();").i(-1);
+            }
+            p("}");
+            p("return new " + JSON_STRING_CLASS + "(value." + getValueMethod(classType) + "());");
+            i(-1).p("}");
         }
-        p("}");
-        p("return new " + JSON_STRING_CLASS + "(value.name());");
-        }
-        i(-1).p("}");
         p();
+    }
+
+    protected String getValueMethod(JClassType classType) {
+        String method = "name";
+        for(JMethod jm : classType.isEnum().getMethods() ) {
+            if (jm.isAnnotationPresent(JsonValue.class)) {
+                method = jm.getName();
+                break;
+            }
+        }
+        return method;
     }
 
     private void generateDecodeMethod(JClassType classType,
@@ -461,6 +471,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
                         final JField lastField = !orderedFields.isEmpty() ? orderedFields.get(orderedFields.size() - 1) : null;
                         for (final JField field : orderedFields) {
                             branch("Processing field: " + field.getName(), new Branch<Void>() {
+                                @Override
                                 public Void execute() throws UnableToCompleteException {
                                     Json jsonAnnotation = field.getAnnotation(Json.class);
                                     Style style = jsonAnnotation != null ? jsonAnnotation.style() : classStyle;
@@ -513,6 +524,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
                         }
 
                         branch("Processing field: " + field.getName(), new Branch<Void>() {
+                            @Override
                             public Void execute() throws UnableToCompleteException {
 
                                 // TODO: try to set the field with a setter
@@ -588,8 +600,7 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
             p("throw new DecodingException(\"Expected a string field called 'name' for enum; not found\");").i(-1);
         }
         p("}");
-        final String className = classType.getParameterizedQualifiedSourceName();
-        p("return Enum.valueOf(" + className + ".class, str.isString().stringValue());").i(-1);
+        decodeEnum(classType, "str.isString().stringValue()");
     }
 
     private String getDefaultValue(JField field) {
@@ -620,10 +631,32 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
             p("throw new DecodingException(\"Expected a json string (for enum), but was given: \"+value);").i(-1);
         }
         p("}");
-        p("return Enum.valueOf(" + classType.getParameterizedQualifiedSourceName() + ".class, str.stringValue());").i(-1);
+
+        String value = "str.stringValue()";
+        decodeEnum(classType, value);
         }
         p("}");
         p();
+    }
+
+    protected void decodeEnum(JClassType classType, String value) {
+        String className = classType.getParameterizedQualifiedSourceName();
+        String method = getValueMethod(classType);
+        if ( method == null ) {
+            p("return Enum.valueOf(" + className + ".class, " + value + ");").i(-1);
+        }
+        else {
+            p("for(" + className + " v: " + className + ".values()) {").i(1);
+            {
+                p("if(v." + method + "().equals(" + value + ")) {").i(1);
+                {
+                    p("return v;").i(-1);
+                }
+                p("}").i(-1);
+            }
+            p("}");
+            p("throw new DecodingException(\"can not find enum for given value: \"+" + value + ");").i(-1);
+        }
     }
 
     public static Map<Class<?>, RestyJsonTypeIdResolver> getRestyResolverClassMap(GeneratorContext context, TreeLogger logger) throws UnableToCompleteException {
@@ -689,9 +722,8 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
 	JClassType type = field.getEnclosingType();
 	if (exists(type, field, fieldName, true)) {
 	    return fieldName;
-	} else {
-	    return null;
 	}
+    return null;
     }
 
     /**
@@ -722,17 +754,15 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
 	fieldName = "get" + upperCaseFirstChar(field.getName());
 	if (exists(type, field, fieldName, false)) {
 	    return fieldName;
-	} else {
-	    return null;
 	}
+    return null;
     }
 
     private String upperCaseFirstChar(String in) {
 	if (in.length() == 1) {
 	    return in.toUpperCase();
-	} else {
-	    return in.substring(0, 1).toUpperCase() + in.substring(1);
 	}
+    return in.substring(0, 1).toUpperCase() + in.substring(1);
     }
 
     /**
@@ -767,21 +797,19 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
         if(returnType == null || fieldType == null) {
             // at least one is a primitive type
             return m.getReturnType().equals(field.getType());
-        } else {
-            // both are non-primitives
-            return returnType.isAssignableFrom(fieldType);
         }
-	} else {
-	    try {
-		JType objectType = find(Object.class, getLogger(), context);
-		JClassType superType = type.getSuperclass();
-		if (!objectType.equals(superType)) {
-		    return exists(superType, field, fieldName, isSetter);
-		}
-	    } catch (UnableToCompleteException e) {
-		// do nothing
-	    }
+        // both are non-primitives
+        return returnType.isAssignableFrom(fieldType);
 	}
+    try {
+    JType objectType = find(Object.class, getLogger(), context);
+    JClassType superType = type.getSuperclass();
+    if (!objectType.equals(superType)) {
+        return exists(superType, field, fieldName, isSetter);
+    }
+    } catch (UnableToCompleteException e) {
+    // do nothing
+    }
 	return false;
     }
 
@@ -813,7 +841,6 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
         for( Map.Entry<String, JMethod> entry: getters.entrySet() ){
             if ( setters.containsKey( entry.getKey() ) && setters.get( entry.getKey() ).equals( entry.getValue().getReturnType() ) ) {
                 String name = entry.getKey().substring(0, 1).toLowerCase() + entry.getKey().substring(1);
-
                 boolean found = false;
                 for( JField f : allFields ){
                     if( f.getName().equals( name ) ){
@@ -822,6 +849,24 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
                     }
                 }
                 JField f = type.findField( name );
+                // is getter annotated, if yes use this annotation for the field
+                JsonProperty propName = null;
+                if ( entry.getValue().isAnnotationPresent(JsonProperty.class) ) {
+                    propName = entry.getValue().getAnnotation(JsonProperty.class);
+                }
+                // is setter annotated, if yes use this annotation for the field
+                JMethod m = type.findMethod("s" + entry.getValue().getName().substring(1),
+                        new JType[]{ entry.getValue().getReturnType() });
+                if ( m != null && m.isAnnotationPresent(JsonProperty.class) ) {
+                    propName = m.getAnnotation(JsonProperty.class);
+                }
+                // if have a field and an annotation from the getter/setter then use that annotation 
+                if ( propName != null && found && !f.getName().equals(propName.value())) {
+                    allFields.remove(f);
+                    DummyJField dummy = new DummyJField( name, entry.getValue().getReturnType() );
+                    dummy.setAnnotation( propName );
+                    allFields.add(dummy);
+                }
                 if ( ! found && !( f != null && f.isAnnotationPresent( JsonIgnore.class ) ) ){
                     DummyJField dummy = new DummyJField( name, entry.getValue().getReturnType() );
                     if ( entry.getValue().isAnnotationPresent(JsonProperty.class) ) {

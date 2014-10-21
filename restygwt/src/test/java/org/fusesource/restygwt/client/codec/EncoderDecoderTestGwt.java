@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,7 +34,6 @@ import java.util.TreeMap;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 
-import java.util.TreeMap;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -43,9 +43,7 @@ import org.codehaus.jackson.annotate.JsonTypeInfo;
 import org.codehaus.jackson.annotate.JsonTypeInfo.As;
 import org.codehaus.jackson.annotate.JsonTypeInfo.Id;
 import org.fusesource.restygwt.client.*;
-import org.fusesource.restygwt.client.basic.Optional;
-import org.fusesource.restygwt.client.codec.EncoderDecoderTestGwt.WithEnum.Cycle;
-
+import org.codehaus.jackson.annotate.JsonValue;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.json.client.JSONNumber;
@@ -540,6 +538,13 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
                         valueEncoder, 
                         Json.Style.JETTISON_NATURAL).toString());
     }
+    
+    public void testCollectionValueDecode() {
+        List<String> collection = new ArrayList<String>(Arrays.asList("me and the corner"));
+        AbstractJsonEncoderDecoder<Collection<String>> valueEncoder =
+                AbstractNestedJsonEncoderDecoder.collectionEncoderDecoder( AbstractJsonEncoderDecoder.STRING );
+        assertEquals(collection.toString(), valueEncoder.decode(valueEncoder.encode(collection)).toString() );
+    }
 
     public void testTypeMapWithMapValueDecode() {
         Map<String, Map<String, String>> map = new HashMap<String, Map<String, String>>();
@@ -681,6 +686,16 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         
         @JsonIgnore
         String firstName;
+
+        transient public byte[] document;
+
+        public void setDocument( String v ) {
+           document = v.getBytes();
+        }
+
+        public String getDocument() {
+           return new String( document );
+        }
         
         String getLastName(){
             return lastName;
@@ -710,9 +725,10 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         ccc.name = "me and the corner";
         ccc.firstName = "chaos";
         ccc.lastName = "club";
+        ccc.setDocument( "resty-docu" );
         
         JSONValue json = cccc.encode(ccc);
-        assertEquals("{\"age\":20, \"name\":\"me and the corner\"}", json.toString());
+        assertEquals("{\"age\":20, \"name\":\"me and the corner\", \"document\":\"resty-docu\"}", json.toString());
         CCC roundTrip = cccc.decode(json);
         assertEquals(ccc.name, roundTrip.name);
         assertEquals(ccc.age, roundTrip.age);
@@ -862,18 +878,27 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         private long yearOfBirth;
 
         private String n;
-        
-        @JsonProperty("vacationId")
+
         private Integer vacationActivityIdForEmployee;
+
+        private Integer vacationActivityIdForEmployer;
 
         @JsonProperty("vacationId")
         public Integer getVacationActivityIdForEmployee() {
             return vacationActivityIdForEmployee;
         }
-        
-        @JsonProperty("vacationId")
+
         public void setVacationActivityIdForEmployee(Integer v) {
             vacationActivityIdForEmployee = v;
+        }
+
+        public Integer getVacationActivityIdForEmployer() {
+            return vacationActivityIdForEmployer;
+        }
+
+        @JsonProperty("vacation-id")
+        public void setVacationActivityIdForEmployer(Integer v) {
+            vacationActivityIdForEmployer = v;
         }
         
         int getAge(){
@@ -912,14 +937,53 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         renamed.setAge(123);
         renamed.setYearOfBirth(1234);
         renamed.setVacationActivityIdForEmployee(34);
+        renamed.setVacationActivityIdForEmployer(42);
         
         JSONValue json = renamedCodec.encode(renamed);
-        assertEquals("{\"my-age\":123, \"year-of-birth\":1234, \"vacationId\":34, \"my-name\":\"marvin the robot\"}", json.toString());
+        String[] values = json.toString().replace("}","").replace("{", "").split(",\\s");
+        Arrays.sort( values );
+        
+        assertEquals("[\"my-age\":123, \"my-name\":\"marvin the robot\", \"vacation-id\":42, \"vacationId\":34, \"year-of-birth\":1234]", 
+                Arrays.toString(values));
         Renamed roundTrip = renamedCodec.decode(json);
         assertEquals(roundTrip.age, 123);
         assertEquals(roundTrip.yearOfBirth, 1234);
         assertEquals(roundTrip.getVacationActivityIdForEmployee().intValue(), 34);
         assertEquals(roundTrip.getName(), "marvin the robot");
+    }
+
+    static public enum Language {
+        ENGLISH("en"),
+        FRENCH("fr");
+
+        private String name;
+
+        @JsonCreator
+        private Language(String name) {
+            this.name = name;
+        }
+
+        @JsonValue
+        public String getName() {
+            return name;
+        }
+    }
+
+    static public class LangRequest {
+        public Language lang;
+    }
+
+    static interface LangRequestCodec extends JsonEncoderDecoder<LangRequest> {
+    }
+
+    public void testEnumAndJsonValue() {
+        LangRequestCodec codec = GWT.create(LangRequestCodec.class);
+        LangRequest pojo = new LangRequest();
+        pojo.lang = Language.FRENCH;
+        JSONValue json = codec.encode( pojo );
+        assertEquals("{\"lang\":\"fr\"}", json.toString());
+        LangRequest roundTrip = codec.decode( json );
+        assertEquals( roundTrip.lang, Language.FRENCH );
     }
 
     static class WithEnum {

@@ -27,19 +27,20 @@ import static org.fusesource.restygwt.rebind.BaseSourceCreator.WARN;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.google.gwt.core.ext.BadPropertyValueException;
 import org.fusesource.restygwt.client.AbstractJsonEncoderDecoder;
 import org.fusesource.restygwt.client.AbstractNestedJsonEncoderDecoder;
 import org.fusesource.restygwt.client.Json;
 import org.fusesource.restygwt.client.Json.Style;
 import org.fusesource.restygwt.client.ObjectEncoderDecoder;
 
+import com.google.gwt.core.ext.BadPropertyValueException;
 import com.google.gwt.core.ext.GeneratorContext;
 import com.google.gwt.core.ext.TreeLogger;
 import com.google.gwt.core.ext.UnableToCompleteException;
@@ -67,6 +68,7 @@ public class JsonEncoderDecoderInstanceLocator {
     public final JClassType MAP_TYPE;
     public final JClassType SET_TYPE;
     public final JClassType LIST_TYPE;
+    public final JClassType COLLECTION_TYPE;
 
     public final HashMap<JType, String> builtInEncoderDecoders = new HashMap<JType, String>();
     public final JsonSerializerGenerators customGenerators = new JsonSerializerGenerators();
@@ -85,6 +87,7 @@ public class JsonEncoderDecoderInstanceLocator {
         this.MAP_TYPE = find(Map.class);
         this.SET_TYPE = find(Set.class);
         this.LIST_TYPE = find(List.class);
+        this.COLLECTION_TYPE = find(Collection.class);
 
         builtInEncoderDecoders.put(JPrimitiveType.BOOLEAN, JSON_ENCODER_DECODER_CLASS + ".BOOLEAN");
         builtInEncoderDecoders.put(JPrimitiveType.BYTE, JSON_ENCODER_DECODER_CLASS + ".BYTE");
@@ -154,7 +157,7 @@ public class JsonEncoderDecoderInstanceLocator {
         return rc;
     }
 
-    private String getCustomEncoderDecoder(JType type) throws UnableToCompleteException {
+    private String getCustomEncoderDecoder(JType type) {
         RestyJsonSerializerGenerator restyGenerator = customGenerators.findGenerator(type);
         if (restyGenerator == null) {
             return null;
@@ -170,7 +173,7 @@ public class JsonEncoderDecoderInstanceLocator {
         }
     }
 
-    public boolean hasCustomEncoderDecoder(JType type) throws UnableToCompleteException {
+    public boolean hasCustomEncoderDecoder(JType type) {
         return getCustomEncoderDecoder(type) != null;
     }
 
@@ -192,17 +195,16 @@ public class JsonEncoderDecoderInstanceLocator {
             return customEncoderDecoder + "." + encoderMethod + "(" + expression + ")";
         }
 
-        if (null != type.isEnum()) {
-            if (encoderMethod.equals("encode")) {
-                return encodeDecodeExpression(STRING_TYPE, expression + ".name()", style, encoderMethod, mapMethod, setMethod, listMethod, arrayMethod);
-            } else {
-                return type.getQualifiedSourceName() + ".valueOf(" + encodeDecodeExpression(STRING_TYPE, expression, style, encoderMethod, mapMethod, setMethod, listMethod, arrayMethod) + ")";
-            }
-        }
-
         String encoderDecoder = getEncoderDecoder(type, logger);
         if (encoderDecoder != null) {
             return encoderDecoder + "." + encoderMethod + "(" + expression + ")";
+        }
+        // TODO enum have an encodeDecoder now - should be obsolete code below
+        if (null != type.isEnum()) {
+            if (encoderMethod.equals("encode")) {
+                return encodeDecodeExpression(STRING_TYPE, expression + ".name()", style, encoderMethod, mapMethod, setMethod, listMethod, arrayMethod);
+            }
+            return type.getQualifiedSourceName() + ".valueOf(" + encodeDecodeExpression(STRING_TYPE, expression, style, encoderMethod, mapMethod, setMethod, listMethod, arrayMethod) + ")";
         }
 
         JClassType clazz = type.isClassOrInterface();
@@ -232,17 +234,21 @@ public class JsonEncoderDecoderInstanceLocator {
             if (encoderDecoder != null) {
                 return listMethod + "(" + expression + ", " + encoderDecoder + ")";
             }
+
+            encoderDecoder = isCollectionEncoderDecoder(clazz, types, style);
+            if (encoderDecoder != null) {
+                return listMethod + "(" + expression + ", " + encoderDecoder + ")";
+            }
         }
         
         encoderDecoder = isArrayEncoderDecoder(type, style);
         if (encoderDecoder != null) {  
             if (encoderMethod.equals("encode")) {
                 return arrayMethod + "(" + expression + ", " + encoderDecoder + ")";
-            } else {
-                return arrayMethod + "(" + expression + ", " + encoderDecoder
-                        + ", new " + type.isArray().getComponentType().getQualifiedSourceName()
-                        + "[" + JSON_ENCODER_DECODER_CLASS + ".getSize(" + expression + ")])";
             }
+            return arrayMethod + "(" + expression + ", " + encoderDecoder
+                    + ", new " + type.isArray().getComponentType().getQualifiedSourceName()
+                    + "[" + JSON_ENCODER_DECODER_CLASS + ".getSize(" + expression + ")])";
         }
 
         error("Do not know how to encode/decode " + type);
@@ -255,9 +261,6 @@ public class JsonEncoderDecoderInstanceLocator {
         if (clazz.isAssignableTo(MAP_TYPE)) {
             if (types.length != 2) {
                 error("Map must define two and only two type parameters");
-            }
-            if (isCollectionType(types[0])) {
-                error("Map key can't be a collection");
             }
 
             String keyEncoderDecoder = getNestedEncoderDecoder(types[0], style);
@@ -298,12 +301,14 @@ public class JsonEncoderDecoderInstanceLocator {
             if( result != null ){
                 return JSON_NESTED_ENCODER_DECODER_CLASS + ".setEncoderDecoder( " + result + " )"; 
             }
-        }
-        else {
-            result = isArrayEncoderDecoder(type, style);
-            if( result != null ){
-                return JSON_NESTED_ENCODER_DECODER_CLASS + ".arrayEncoderDecoder( " + result + " )"; 
+            result = isCollectionEncoderDecoder( clazz, types, style );
+            if ( result != null ){
+                return JSON_NESTED_ENCODER_DECODER_CLASS + ".collectionEncoderDecoder( " + result + " )";
             }
+        }
+        result = isArrayEncoderDecoder(type, style);
+        if( result != null ){
+            return JSON_NESTED_ENCODER_DECODER_CLASS + ".arrayEncoderDecoder( " + result + " )"; 
         }
         return null;
     }
@@ -351,6 +356,19 @@ public class JsonEncoderDecoderInstanceLocator {
         return null;
     }
 
+    protected String isCollectionEncoderDecoder(JClassType clazz, JClassType[] types,
+            Style style) throws UnableToCompleteException {
+        if (clazz.isAssignableTo(COLLECTION_TYPE)) {
+            if (types.length != 1) {
+                error("Collection must define one and only one type parameter");
+            }
+            String encoderDecoder = getNestedEncoderDecoder(types[0], style);
+            debug("type encoder for: " + types[0] + " is " + encoderDecoder);
+            return encoderDecoder;
+        }
+        return null;
+    }
+
     protected JClassType[] getTypes(JType type) throws UnableToCompleteException {
         JParameterizedType parameterizedType = type.isParameterized();
         if (parameterizedType == null || parameterizedType.getTypeArgs() == null) {
@@ -361,7 +379,7 @@ public class JsonEncoderDecoderInstanceLocator {
     }
     boolean isCollectionType(JClassType clazz) {
         return clazz != null
-                && (clazz.isAssignableTo(SET_TYPE) || clazz.isAssignableTo(LIST_TYPE) || clazz.isAssignableTo(MAP_TYPE));
+                && (clazz.isAssignableTo(SET_TYPE) || clazz.isAssignableTo(LIST_TYPE) || clazz.isAssignableTo(MAP_TYPE) || clazz.isAssignableTo(COLLECTION_TYPE));
     }
 
     protected void error(String msg) throws UnableToCompleteException {
@@ -374,15 +392,15 @@ public class JsonEncoderDecoderInstanceLocator {
         throw new UnableToCompleteException();
     }
 
-    protected void info(String msg) throws UnableToCompleteException {
+    protected void info(String msg) {
         logger.log(INFO, msg);
     }
 
-    protected void debug(String msg) throws UnableToCompleteException {
+    protected void debug(String msg) {
         logger.log(DEBUG, msg);
     }
 
-    protected void trace(String msg) throws UnableToCompleteException {
+    protected void trace(String msg) {
         logger.log(TRACE, msg);
     }
 
