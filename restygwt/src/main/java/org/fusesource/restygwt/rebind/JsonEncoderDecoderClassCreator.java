@@ -312,8 +312,9 @@ public class JsonEncoderDecoderClassCreator extends BaseSourceCreator {
                                     {
                                         if (null != field.getType().isEnum()) {
                                             p("if(" + fieldExpr + " == null) {").i(1);
+                                            p("if(!org.fusesource.restygwt.client.Defaults.doesIgnoreJsonNulls())").i(1);
                                             p("rc.put(" + wrap(jsonName) + ", " + JSON_NULL_CLASS + ".getInstance());");
-                                            i(-1).p("} else {").i(1);
+                                            i(-1).i(-1).p("} else {").i(1);
                                         }
 
                                         p(JSON_VALUE_CLASS + " v=" + expression + ";");

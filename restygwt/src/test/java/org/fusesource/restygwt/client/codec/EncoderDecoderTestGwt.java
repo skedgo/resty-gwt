@@ -42,15 +42,9 @@ import org.codehaus.jackson.annotate.JsonSubTypes.Type;
 import org.codehaus.jackson.annotate.JsonTypeInfo;
 import org.codehaus.jackson.annotate.JsonTypeInfo.As;
 import org.codehaus.jackson.annotate.JsonTypeInfo.Id;
-import org.fusesource.restygwt.client.AbstractJsonEncoderDecoder;
-import org.fusesource.restygwt.client.AbstractNestedJsonEncoderDecoder;
-import org.fusesource.restygwt.client.Json;
-import org.fusesource.restygwt.client.JsonEncoderDecoder;
-import org.fusesource.restygwt.client.ObjectEncoderDecoder;
+import org.fusesource.restygwt.client.*;
 import org.fusesource.restygwt.client.basic.Optional;
 import org.fusesource.restygwt.client.codec.EncoderDecoderTestGwt.WithEnum.Cycle;
-import org.fusesource.restygwt.client.MethodCallback;
-import org.fusesource.restygwt.client.RestService;
 
 
 import com.google.gwt.core.client.GWT;
@@ -962,13 +956,20 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         assertEquals( roundTrip.getLast(), Cycle.END );
         
         pojo.first = null;
-        pojo.setLast( null );
-    
+        pojo.setLast(null);
+
         json = codec.encode( pojo );
         assertEquals("{\"first\":null, \"last\":null}", json.toString());
         roundTrip = codec.decode( json );
         assertEquals( roundTrip.first, null );
         assertEquals( roundTrip.getLast(), null );
+
+        Defaults.ignoreJsonNulls();
+        json = codec.encode( pojo );
+        assertEquals("{}", json.toString());
+        roundTrip = codec.decode(json);
+        assertEquals( roundTrip.first, null );
+        assertEquals(roundTrip.getLast(), null);
     }
 
     static class WithOptionalPrimitive {
