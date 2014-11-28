@@ -4,12 +4,12 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-import org.codehaus.jackson.annotate.JsonSubTypes;
-import org.codehaus.jackson.annotate.JsonSubTypes.Type;
-import org.codehaus.jackson.annotate.JsonTypeInfo.Id;
-import org.codehaus.jackson.annotate.JsonTypeName;
-import org.codehaus.jackson.map.annotate.JsonTypeIdResolver;
-import org.codehaus.jackson.map.jsontype.TypeIdResolver;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
+import com.fasterxml.jackson.annotation.JsonTypeName;
+import com.fasterxml.jackson.databind.annotation.JsonTypeIdResolver;
+import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
 import org.fusesource.restygwt.rebind.JsonEncoderDecoderClassCreator.Subtype;
 import org.fusesource.restygwt.rebind.util.JsonTypeInfoIdVisitor;
 
@@ -18,6 +18,7 @@ import com.google.gwt.core.ext.TreeLogger;
 import com.google.gwt.core.ext.UnableToCompleteException;
 import com.google.gwt.core.ext.typeinfo.JClassType;
 import com.google.gwt.thirdparty.guava.common.collect.Lists;
+import static org.fusesource.restygwt.rebind.util.AnnotationUtils.*;
 
 public class PossibleTypesVisitor extends JsonTypeInfoIdVisitor<List<Subtype>, UnableToCompleteException>
 {
@@ -81,7 +82,7 @@ public class PossibleTypesVisitor extends JsonTypeInfoIdVisitor<List<Subtype>, U
     {
         final List<Subtype> possibleTypes = Lists.newArrayList();
 
-        final JsonTypeIdResolver typeResolver = JsonEncoderDecoderClassCreator.findAnnotation(classType, JsonTypeIdResolver.class);
+        final JsonTypeIdResolver typeResolver = getAnnotation(classType, JsonTypeIdResolver.class);
         if (typeResolver != null) {
             Class<? extends TypeIdResolver> resolverClass = typeResolver.value();
             RestyJsonTypeIdResolver restyResolver;

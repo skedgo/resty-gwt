@@ -31,19 +31,30 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import javax.validation.constraints.AssertTrue;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 
-import org.codehaus.jackson.annotate.JsonCreator;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.annotate.JsonSubTypes;
-import org.codehaus.jackson.annotate.JsonSubTypes.Type;
-import org.codehaus.jackson.annotate.JsonTypeInfo;
-import org.codehaus.jackson.annotate.JsonTypeInfo.As;
-import org.codehaus.jackson.annotate.JsonTypeInfo.Id;
-import org.fusesource.restygwt.client.*;
-import org.codehaus.jackson.annotate.JsonValue;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
+import com.fasterxml.jackson.annotation.JsonValue;
+
+import org.fusesource.restygwt.client.AbstractJsonEncoderDecoder;
+import org.fusesource.restygwt.client.AbstractNestedJsonEncoderDecoder;
+import org.fusesource.restygwt.client.Defaults;
+import org.fusesource.restygwt.client.Json;
+import org.fusesource.restygwt.client.JsonEncoderDecoder;
+import org.fusesource.restygwt.client.MethodCallback;
+import org.fusesource.restygwt.client.ObjectEncoderDecoder;
+import org.fusesource.restygwt.client.RestService;
+import org.fusesource.restygwt.client.basic.Optional;
+import org.fusesource.restygwt.client.codec.EncoderDecoderTestGwt.WithEnum.Cycle;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.json.client.JSONNumber;
@@ -51,7 +62,7 @@ import com.google.gwt.json.client.JSONObject;
 import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
 import com.google.gwt.junit.client.GWTTestCase;
-import org.fusesource.restygwt.client.basic.Optional;
+import com.google.gwt.user.server.Base64Utils;
 
 public class EncoderDecoderTestGwt extends GWTTestCase {
 
@@ -78,7 +89,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
 
     public interface FloatCodec extends JsonEncoderDecoder<ANumber<Float>> {
     }
-    
+
     public static class Name {
         public String name;
     }
@@ -242,6 +253,9 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
     public interface PropertyCodec extends JsonEncoderDecoder<CredentialsWithProperty> {
     }
 
+    public interface CredentialsWithJacksonAnnotationsInsideCodec extends JsonEncoderDecoder<CredentialsWithJacksonAnnotationsInside> {
+    }
+
     public interface SubPropertyCodec extends JsonEncoderDecoder<SubCredentialsWithProperty> {
     }
 
@@ -275,6 +289,20 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         assertEquals("email-direct", subRoundTrip.email);
         assertEquals("password-direct", subRoundTrip.password);
         assertEquals("login-direct", subRoundTrip.login);
+    }
+
+
+    public void testJacksonAnnotationInsideProperty() {
+    	CredentialsWithJacksonAnnotationsInsideCodec codec = GWT.create(CredentialsWithJacksonAnnotationsInsideCodec.class);
+    	CredentialsWithJacksonAnnotationsInside base = new CredentialsWithJacksonAnnotationsInside();
+        base.setEmail("email-super");
+        base.setPassword("password-super");
+        JSONValue baseJson = codec.encode(base);
+        CredentialsWithJacksonAnnotationsInside baseRoundTrip = codec.decode(baseJson);
+        assertEquals("email-super", baseRoundTrip.email);
+        assertEquals("password-super", baseRoundTrip.password);
+        assertEquals(baseRoundTrip.getClass(), CredentialsWithJacksonAnnotationsInside.class);
+
     }
 
     static class B {
@@ -338,28 +366,46 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         assertEquals(b.toString(),
                 AbstractJsonEncoderDecoder.STRING.decode(AbstractJsonEncoderDecoder.BOOLEAN.encode(b)));
     }
-    
+
     public void testBooleanArrayDecode() {
         boolean[] array = {true, false};
         AbstractJsonEncoderDecoder<Boolean> encoder = AbstractJsonEncoderDecoder.BOOLEAN;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new boolean[2])));
     }
 
     public void testByteArrayDecode() {
         byte[] array = {2, 8};
         AbstractJsonEncoderDecoder<Byte> encoder = AbstractJsonEncoderDecoder.BYTE;
+
+        JSONValue json = AbstractJsonEncoderDecoder.toJSON(array, encoder);
+        assertNotNull(json.isArray());
+        assertEquals(json.isArray().size(), 2);
+        assertEquals(json.isArray().get(0).isNumber().doubleValue(), (double)array[0]);
+        assertEquals(json.isArray().get(1).isNumber().doubleValue(), (double)array[1]);
+        assertEquals("[2, 8]", Arrays.toString(AbstractJsonEncoderDecoder.toArray(json, encoder)));
+
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
-                            encoder, new byte[2])));
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
+                            encoder)));
+
+       Defaults.setByteArraysToBase64(true);
+        try {
+           json = AbstractJsonEncoderDecoder.toJSON(array, encoder);
+           assertEquals("Agg=", json.isString().stringValue());
+            assertEquals("[2, 8]", Arrays.toString(AbstractJsonEncoderDecoder.toArray(json, encoder)));
+        }
+        finally {
+           Defaults.setByteArraysToBase64(false);
+        }
     }
 
     public void testCharacterArrayDecode() {
         char[] array = {'a','z'};
         AbstractJsonEncoderDecoder<Character> encoder = AbstractJsonEncoderDecoder.CHAR;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new char[2])));
     }
 
@@ -367,7 +413,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         float[] array = {1.4e19f, -13.53e-18f};
         AbstractJsonEncoderDecoder<Float> encoder = AbstractJsonEncoderDecoder.FLOAT;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new float[2])));
     }
 
@@ -375,7 +421,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         double[] array = {1.4e193, -13.53e-188};
         AbstractJsonEncoderDecoder<Double> encoder = AbstractJsonEncoderDecoder.DOUBLE;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new double[2])));
     }
 
@@ -383,7 +429,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         short[] array = {1, -13};
         AbstractJsonEncoderDecoder<Short> encoder = AbstractJsonEncoderDecoder.SHORT;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new short[2])));
     }
 
@@ -391,7 +437,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         int[] array = {1010, -13100};
         AbstractJsonEncoderDecoder<Integer> encoder = AbstractJsonEncoderDecoder.INT;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new int[2])));
     }
 
@@ -399,7 +445,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         long[] array = {1010, -13100};
         AbstractJsonEncoderDecoder<Long> encoder = AbstractJsonEncoderDecoder.LONG;
         assertEquals(Arrays.toString(array),
-                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder), 
+                Arrays.toString(AbstractJsonEncoderDecoder.toArray(AbstractJsonEncoderDecoder.toJSON(array, encoder),
                             encoder, new long[2])));
     }
 
@@ -416,12 +462,12 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         map.put("123", 321);
         AbstractJsonEncoderDecoder<Integer> encoder = AbstractJsonEncoderDecoder.INT;
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, encoder, Json.Style.DEFAULT), 
-                        encoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, encoder, Json.Style.DEFAULT),
+                        encoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, encoder, Json.Style.JETTISON_NATURAL), 
-                        encoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, encoder, Json.Style.JETTISON_NATURAL),
+                        encoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
 
@@ -431,14 +477,14 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         AbstractJsonEncoderDecoder<Integer> keyEncoder = AbstractJsonEncoderDecoder.INT;
         AbstractJsonEncoderDecoder<String> valueEncoder = AbstractJsonEncoderDecoder.STRING;
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.DEFAULT), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.DEFAULT),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
 
@@ -448,14 +494,14 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         AbstractJsonEncoderDecoder<BigDecimal> keyEncoder = AbstractJsonEncoderDecoder.BIG_DECIMAL;
         AbstractJsonEncoderDecoder<String> valueEncoder = AbstractJsonEncoderDecoder.STRING;
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.DEFAULT), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.DEFAULT),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
 
@@ -470,9 +516,9 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
                         valueEncoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
 
@@ -502,7 +548,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
 
     static interface EmailCodec extends JsonEncoderDecoder<Email> {
     }
-        
+
     public void testTypeMapWithComplexDecode() {
         Map<Email, String> map = new HashMap<Email, String>();
         Email email = new Email();
@@ -513,9 +559,9 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         AbstractJsonEncoderDecoder<String> valueEncoder = AbstractJsonEncoderDecoder.STRING;
 
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.DEFAULT), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.DEFAULT),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
                 AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, valueEncoder, Json.Style.JETTISON_NATURAL),
@@ -529,17 +575,17 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         map.put("key", new ArrayList<String>(Arrays.asList("me and the corner")));
         AbstractJsonEncoderDecoder<List<String>> valueEncoder =
                 AbstractNestedJsonEncoderDecoder.listEncoderDecoder( AbstractJsonEncoderDecoder.STRING );
-        
+
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.DEFAULT), 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.DEFAULT),
+                        valueEncoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.JETTISON_NATURAL), 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.JETTISON_NATURAL),
+                        valueEncoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
-    
+
     public void testCollectionValueDecode() {
         List<String> collection = new ArrayList<String>(Arrays.asList("me and the corner"));
         AbstractJsonEncoderDecoder<Collection<String>> valueEncoder =
@@ -557,21 +603,21 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
                 AbstractNestedJsonEncoderDecoder.mapEncoderDecoder( AbstractJsonEncoderDecoder.STRING,
                                                                     AbstractJsonEncoderDecoder.STRING,
                                                                     Json.Style.DEFAULT );
-        
+
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.DEFAULT), 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.DEFAULT),
+                        valueEncoder,
                         Json.Style.DEFAULT).toString());
-        
+
         // the JETTISON enoding it is important to use the special encoder with String keys
         valueEncoder = AbstractNestedJsonEncoderDecoder.mapEncoderDecoder( AbstractJsonEncoderDecoder.STRING, Json.Style.JETTISON_NATURAL );
-        
+
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.JETTISON_NATURAL), 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, valueEncoder, Json.Style.JETTISON_NATURAL),
+                        valueEncoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
-    
+
     public void testTypeMapWithListValueDecodeAndComplexKey() {
         Map<Email, List<String>> map = new HashMap<Email, List<String>>();
         Email email = new Email();
@@ -580,50 +626,50 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         map.put(email, new ArrayList<String>(Arrays.asList("me and the corner")));
         AbstractJsonEncoderDecoder<Email> keyEncoder = GWT.create(EmailCodec.class);
         AbstractJsonEncoderDecoder<List<String>> valueEncoder = AbstractNestedJsonEncoderDecoder.listEncoderDecoder( AbstractJsonEncoderDecoder.STRING );
-  
+
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, 
-                        valueEncoder, Json.Style.DEFAULT), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder,
+                        valueEncoder, Json.Style.DEFAULT),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.DEFAULT).toString());
         assertEquals(map.toString(),
-                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder, 
-                        valueEncoder, Json.Style.JETTISON_NATURAL), 
-                        keyEncoder, 
-                        valueEncoder, 
+                AbstractJsonEncoderDecoder.toMap(AbstractJsonEncoderDecoder.toJSON(map, keyEncoder,
+                        valueEncoder, Json.Style.JETTISON_NATURAL),
+                        keyEncoder,
+                        valueEncoder,
                         Json.Style.JETTISON_NATURAL).toString());
     }
 
     static interface WithArraysAndCollectionsCodec extends JsonEncoderDecoder<WithArraysAndCollections> {}
-    
+
     @SuppressWarnings("unchecked")
     public void testTypeWithArrasAndCollections() {
         WithArraysAndCollections obj = new WithArraysAndCollections();
-        
+
         obj.ages = new int[] { 1, 2, 3, 4 };
 
         obj.ageSet = new HashSet<int[]>();
         obj.ageSet.add( obj.ages );
-        
+
         Email email = new Email();
         email.email = "me@example.com";
         email.name = "me";
-        
+
         obj.emailArray = new Email[]{ email };
-        
+
         obj.emailList = new ArrayList<Email>();
         obj.emailList.add(email);
 
         obj.emailSet = new HashSet<Email>();
         obj.emailSet.add( email );
-        
+
         obj.emailListArray = new List[ 1 ];
         obj.emailListArray[ 0 ] = obj.emailList;
-        
+
         obj.emailSetArray = new Set[ 1 ];
         obj.emailSetArray[ 0 ] = obj.emailSet;
-        
+
         obj.personalEmailList = new HashMap<String, List<Email>>();
         obj.personalEmailList.put( "me", obj.emailList );
 
@@ -644,9 +690,9 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
 
         obj.personalEmailSetMap = new HashMap<Email, Map<String, Set<Email>>>();
         obj.personalEmailSetMap.put( email, obj.personalEmailSet );
-        
+
         AbstractJsonEncoderDecoder<WithArraysAndCollections> encoder = GWT.create(WithArraysAndCollectionsCodec.class);
-  
+
         JSONValue json = encoder.encode(obj);
         assertEquals("{\"ages\":[1,2,3,4], " +
                 "\"emailArray\":[{\"name\":\"me\", \"email\":\"me@example.com\"}], " +
@@ -659,7 +705,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         		", \"personalEmailListArray\":{\"me\":[[{\"name\":\"me\", \"email\":\"me@example.com\"}]]}" +
         		", \"personalEmailSetArray\":{\"me\":[[{\"name\":\"me\", \"email\":\"me@example.com\"}]]}" +
                 ", \"personalEmailSetList\":[{\"me\":[{\"name\":\"me\", \"email\":\"me@example.com\"}]}]" +
-                ", \"personalEmailListSet\":[{\"me\":[{\"name\":\"me\", \"email\":\"me@example.com\"}]}]" + 
+                ", \"personalEmailListSet\":[{\"me\":[{\"name\":\"me\", \"email\":\"me@example.com\"}]}]" +
                 ", \"personalEmailSetMap\":{\"{\\\"name\\\":\\\"me\\\", \\\"email\\\":\\\"me@example.com\\\"}\":" +
                 "{\"me\":[{\"name\":\"me\", \"email\":\"me@example.com\"}]}}" +
         		"}",
@@ -674,17 +720,17 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
     }
 
     static class CCC {
-        
+
         int age;
-        
+
         @JsonIgnore
         String noAge;
-        
+
         @JsonIgnore
         private String lastName;
-        
+
         String name;
-        
+
         @JsonIgnore
         String firstName;
 
@@ -697,20 +743,20 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         public String getDocument() {
            return new String( document );
         }
-        
+
         String getLastName(){
             return lastName;
         }
-        
+
         void setLastName(String name){
             lastName = name;
         }
-        
+
         @JsonIgnore
         String getAge(){
             return noAge;
         }
-        
+
         void setAge( String age ){
             this.noAge = age;
         }
@@ -727,7 +773,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         ccc.firstName = "chaos";
         ccc.lastName = "club";
         ccc.setDocument( "resty-docu" );
-        
+
         JSONValue json = cccc.encode(ccc);
         assertEquals("{\"age\":20, \"name\":\"me and the corner\", \"document\":\"resty-docu\"}", json.toString());
         CCC roundTrip = cccc.decode(json);
@@ -737,7 +783,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         assertNull(roundTrip.getLastName());
         assertNull(roundTrip.getAge());
     }
-    
+
     static class Shorty {
 
         private short shorty;
@@ -764,14 +810,14 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         }
 
     }
-    
+
     static interface ShortyCodec extends JsonEncoderDecoder<Shorty> {
     }
-    
+
     public void testShortys() {
         ShortyCodec shortyCodec = GWT.create(ShortyCodec.class);
         Shorty shorty = new Shorty();
-        
+
         JSONValue json = shortyCodec.encode(shorty);
         assertEquals("{\"shorty\":0, \"id\":0}", json.toString());
         Shorty roundTrip = shortyCodec.decode(json);
@@ -780,11 +826,11 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
     }
 
     public void testSuperlongLongs() {
-        
+
         ShortyCodec shortyCodec = GWT.create(ShortyCodec.class);
         Shorty shorty = new Shorty();
         shorty.id = 9007199254741115l;// = 2^53 + 123;
-        
+
         // TODO that result is just wrong !!!!
         JSONValue json = shortyCodec.encode(shorty);
         assertEquals("{\"shorty\":0, \"id\":9007199254741116}", json.toString());
@@ -794,7 +840,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
 
     public void testSuperlongLongsAsString() {
         ShortyCodec shortyCodec = GWT.create(ShortyCodec.class);
-        
+
         JSONObject json = new JSONObject();
         json.put("shorty", new JSONNumber(0));
         json.put("id", new JSONString("9007199254741115"));
@@ -802,23 +848,23 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         Shorty roundTrip = shortyCodec.decode(json);
         assertEquals(roundTrip.getId(), 9007199254741115l);
     }
-    
+
     static class Bean {
-        
+
         @JsonIgnore
         private int myAge = 123;
 
         int getAge(){
             return myAge;
         }
-        
+
         void setAge( int a ){
             this.myAge = a;
         }
-        
+
         void setYearOfBirth( long a ){
         }
-        
+
         long getYearOfBirth(){
             return 1234;
         }
@@ -831,12 +877,12 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         String getName(){
             return name;
         }
-        
+
         void setName( String name ){
             this.name = name;
         }
     }
-    
+
     static interface BeanCodec extends JsonEncoderDecoder<Bean> {
     }
     static interface NestedBeanCodec extends JsonEncoderDecoder<NestedBean> {
@@ -845,7 +891,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
     public void testBean() {
         BeanCodec beanCodec = GWT.create(BeanCodec.class);
         Bean bean = new Bean();
-        
+
         JSONValue json = beanCodec.encode(bean);
         // the order of keys depends on jdk7 vs. jdk8 so look at each key separately
         assertEquals(123.0, json.isObject().get("age").isNumber().doubleValue());
@@ -854,12 +900,12 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         assertEquals(roundTrip.getAge(), 123);
         assertEquals(roundTrip.getYearOfBirth(), 1234);
     }
-    
+
 
     public void testNestedBean() {
         NestedBeanCodec beanCodec = GWT.create(NestedBeanCodec.class);
         NestedBean bean = new NestedBean();
-        
+
         JSONValue json = beanCodec.encode(bean);
         // the order of keys depends on jdk7 vs. jdk8 so look at each key separately
         assertEquals(123.0, json.isObject().get("age").isNumber().doubleValue());
@@ -871,10 +917,10 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
     }
 
     static class Renamed {
-        
+
         @JsonProperty( "my-age")
         private int age;
-        
+
         @Json( name = "year-of-birth")
         private long yearOfBirth;
 
@@ -901,23 +947,23 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         public void setVacationActivityIdForEmployer(Integer v) {
             vacationActivityIdForEmployer = v;
         }
-        
+
         int getAge(){
             return age;
         }
-        
+
         void setAge( int a ){
             this.age = a;
         }
-        
+
         void setYearOfBirth( long a ){
             this.yearOfBirth = a;
         }
-        
+
         long getYearOfBirth(){
             return yearOfBirth;
         }
-        
+
         void setName( String name ){
             this.n = name;
         }
@@ -927,10 +973,10 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
             return n;
         }
     }
-    
+
     static interface RenamedCodec extends JsonEncoderDecoder<Renamed> {
     }
-    
+
     public void testRenamed() {
         RenamedCodec renamedCodec = GWT.create(RenamedCodec.class);
         Renamed renamed = new Renamed();
@@ -939,12 +985,12 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         renamed.setYearOfBirth(1234);
         renamed.setVacationActivityIdForEmployee(34);
         renamed.setVacationActivityIdForEmployer(42);
-        
+
         JSONValue json = renamedCodec.encode(renamed);
         String[] values = json.toString().replace("}","").replace("{", "").split(",\\s");
         Arrays.sort( values );
-        
-        assertEquals("[\"my-age\":123, \"my-name\":\"marvin the robot\", \"vacation-id\":42, \"vacationId\":34, \"year-of-birth\":1234]", 
+
+        assertEquals("[\"my-age\":123, \"my-name\":\"marvin the robot\", \"vacation-id\":42, \"vacationId\":34, \"year-of-birth\":1234]",
                 Arrays.toString(values));
         Renamed roundTrip = renamedCodec.decode(json);
         assertEquals(roundTrip.age, 123);
@@ -988,11 +1034,11 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
     }
 
     static class WithEnum {
-        
-        enum Cycle { BEGIN, LIFE, END } 
-      
+
+        enum Cycle { BEGIN, LIFE, END }
+
         public Cycle first;
-        
+
         private Cycle last;
 
         public Cycle getLast() {
@@ -1002,7 +1048,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         public void setLast(Cycle last) {
             this.last = last;
         }
-        
+
     }
 
     static interface WithEnumCodec extends JsonEncoderDecoder<WithEnum> {
@@ -1013,13 +1059,13 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         WithEnum pojo = new WithEnum();
         pojo.first = WithEnum.Cycle.BEGIN;
         pojo.setLast( WithEnum.Cycle.END );
-    
+
         JSONValue json = codec.encode( pojo );
         assertEquals("{\"first\":\"BEGIN\", \"last\":\"END\"}", json.toString());
         WithEnum roundTrip = codec.decode( json );
         assertEquals( roundTrip.first, WithEnum.Cycle.BEGIN );
         assertEquals( roundTrip.getLast(), WithEnum.Cycle.END );
-        
+
         pojo.first = null;
         pojo.setLast(null);
 
@@ -1110,7 +1156,7 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         @Path("/")
         void myendpoint( MethodCallback<OneMoreExtBase> callback );
     }
-    
+
     public void testSubClassHierarchyEncoderDecoder() {
         SubClassHierarchyRestService service = GWT.create(SubClassHierarchyRestService.class);
         // we won't even get here if "Other" is put in the generated encoder/decoder for OneMoreExtBase
@@ -1138,14 +1184,18 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         JSONValue value = codec.encode(new MoreSpecificFieldThanConstructor(Collections.<String, String> singletonMap("foo", "bar")));
         assertEquals(value.toString(), codec.encode(codec.decode(value)).toString());
     }
-    
+
     @JsonTypeInfo(use = Id.CLASS, include = As.PROPERTY, property = "@class")
-    @JsonSubTypes({ @Type(DefaultImplementationOfSubTypeInterface.class) })
+    @JsonSubTypes({ @Type(DefaultImplementationOfSubTypeInterface.class),
+		@Type(SecondImplementationOfSubTypeInterface.class)})
     interface JsonSubTypesWithAnInterface {
         String getValue();
     }
-    
-    static class DefaultImplementationOfSubTypeInterface implements JsonSubTypesWithAnInterface {
+
+    static abstract class AbstractSubType implements JsonSubTypesWithAnInterface {
+    }
+
+    static class DefaultImplementationOfSubTypeInterface extends AbstractSubType {
 
         private String value;
 
@@ -1159,8 +1209,19 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
             return value;
         }
     }
-    
+
+    static class SecondImplementationOfSubTypeInterface extends AbstractSubType {
+
+        public String value;
+
+        @Override
+        public String getValue() {
+            return value;
+        }
+    }
+
     static interface JsonSubTypesWithAnInterfaceCodec extends JsonEncoderDecoder<JsonSubTypesWithAnInterface> {}
+    static interface JsonSubTypesWithAnInterfaceImplementationCodec extends JsonEncoderDecoder<DefaultImplementationOfSubTypeInterface> {}
 
     public void testJsonSubTypesWithAnInterface() {
         JsonSubTypesWithAnInterfaceCodec codec = GWT.create(JsonSubTypesWithAnInterfaceCodec.class);
@@ -1168,12 +1229,30 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         JsonSubTypesWithAnInterface o1 = new DefaultImplementationOfSubTypeInterface(value);
 
         JSONValue json = codec.encode(o1);
+        assertEquals(json.isObject().get("@class").isString().stringValue(),
+                DefaultImplementationOfSubTypeInterface.class.getName().replace("$","."));
         JsonSubTypesWithAnInterface o2 = codec.decode(json);
         assertEquals(json.toString(), codec.encode(o2).toString());
         assertEquals(value, o1.getValue());
         assertEquals(o1.getValue(), o2.getValue());
+        assertEquals(o2.getClass(), DefaultImplementationOfSubTypeInterface.class);
     }
-    
+
+    public void testJsonSubTypesWithInterfaceUsingConcreteImplementationCodec() {
+        JsonSubTypesWithAnInterfaceImplementationCodec codec = GWT.create(JsonSubTypesWithAnInterfaceImplementationCodec.class);
+        String value = "Hello, world!";
+        DefaultImplementationOfSubTypeInterface o1 = new DefaultImplementationOfSubTypeInterface(value);
+
+        JSONValue json = codec.encode(o1);
+        JSONValue objectClass = json.isObject().get("@class");
+        assertNotNull(objectClass);
+        assertEquals(objectClass.isString().stringValue(),
+                DefaultImplementationOfSubTypeInterface.class.getName().replace("$","."));
+        DefaultImplementationOfSubTypeInterface o2 = codec.decode(json);
+        assertEquals(json.toString(), codec.encode(o2).toString());
+        assertEquals(value, o1.getValue());
+    }
+
 
     @JsonTypeInfo(use = Id.CLASS, include = As.PROPERTY, property = "@class")
     @JsonSubTypes({ @Type(EnumOfSubTypeInterface.class) })
@@ -1181,12 +1260,12 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         @JsonProperty("name")
         String name();
     }
-    
+
     enum EnumOfSubTypeInterface implements JsonSubTypesWithAnInterfaceForUseWithAnEnum {
         HELLO,
         WORLD
     }
-    
+
     static interface JsonSubTypesWithAnInterfaceForUseWithAnEnumCodec extends JsonEncoderDecoder<JsonSubTypesWithAnInterfaceForUseWithAnEnum> {}
 
     public void testJsonSubTypesWithAnInterfaceImplementedByAnEnum() {
@@ -1195,4 +1274,5 @@ public class EncoderDecoderTestGwt extends GWTTestCase {
         JsonSubTypesWithAnInterfaceForUseWithAnEnum useWithAnEnum = codec.decode(json);
         assertEquals(useWithAnEnum.name(), EnumOfSubTypeInterface.HELLO.name());
     }
+
 }
